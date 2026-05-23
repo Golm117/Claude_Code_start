@@ -23,8 +23,10 @@ Start_Here/
 ├── OPERATING_PROTOCOL.md              ← memory model + checkpoint discipline
 ├── BOOTSTRAP.md                       ← orchestration prompt that consumes a valid .pdr.md
 ├── skills/
-│   └── pdr-grill/
-│       └── SKILL.md                   ← the entry-point skill that interviews the user
+│   ├── pdr-grill/
+│   │   └── SKILL.md                   ← the entry-point skill that interviews the user
+│   └── cc-chain/
+│       └── SKILL.md                   ← async Claude Code chain driver (Pattern B+); deployed to ~/.claude/skills/ by BOOTSTRAP if absent
 └── templates/
     ├── agent-blank.md                 ← the SOLE template every agent scaffolds from
     ├── docs/
@@ -96,12 +98,13 @@ Once `.pdr.md` is validated and `TASKS.md` is seeded:
 
 BOOTSTRAP will:
 1. Verify all prerequisites
-2. Compute derived variables
-3. Scaffold project root docs
-4. Scaffold agent files (one per agent in the roster) from `agent-blank.md`
-5. Scaffold per-agent domain folders
-6. Run the all-hands exercise (Phase A, Phase B, handoff-mesh audit)
-7. Report completion
+2. Deploy any bundled skills (e.g. `cc-chain`) to `~/.claude/skills/` if not already installed (idempotent — never overwrites)
+3. Compute derived variables
+4. Scaffold project root docs
+5. Scaffold agent files (one per agent in the roster) from `agent-blank.md`
+6. Scaffold per-agent domain folders
+7. Run the all-hands exercise (Phase A, Phase B, handoff-mesh audit)
+8. Report completion
 
 After BOOTSTRAP, the project is ready to claim its first Phase 0 task.
 
@@ -144,4 +147,33 @@ Naming this explicitly so it doesn't sneak back in:
 - **No nested subagent spawning.** Subagents are leaves; the orchestrator is the only spawner. Tree depth is one.
 
 These are intentional non-features. If a future change wants to add one of them, the design rationale that excluded them lives in this folder's docs — read those before adding.
+
+## Updates
+
+### 2026-05-22 — `cc-chain` skill bundled and made project-aware
+
+Added the async Claude Code chain driver (Pattern B+) to Start_Here so it travels with the scaffold for anyone cloning the repo.
+
+**What `cc-chain` does.** It drives async chains where the main session plans slices and dispatches each one to a remote Claude Code session via `RemoteTrigger`, monitoring the commit via `ScheduleWakeup` and verifying the diff before chaining the next slice. A configurable confidence gate (default 95%, override with `cc-chain threshold:N`) decides whether to auto-fire or pause for the user. End-of-chain behavior is silent by default; pass the `branch-explore` flag if you want it to enumerate plausible next directions.
+
+**New in this update — project-aware prompt drafting.** When `cc-chain` detects canonical Claude Code artifacts in the project it's running in, it surfaces them to the remote CC session:
+
+- `Glob` over `.claude/agents/*.md` — enumerates any subagents the project has scaffolded (Start_Here writes these during BOOTSTRAP Step 3).
+- Reads `CONTEXT.md`, `AGENTS.md`, or `ROLES.md` at the repo root if present, for richer role descriptions.
+- Includes a "Subagents available in this project" section in the fire prompt, with invocation hints tied to the slice's actual shape ("for the research step, invoke `market-research`"; "before commit, invoke `code-review` on the diff").
+- Falls back silently if no agents and no role docs are found — no error, no warning, no degraded behavior.
+
+The skill stays general-purpose; it does NOT bake Start_Here-specific paths in. Start_Here happens to scaffold to the canonical Claude Code locations the skill reads, so they line up naturally — but a project using different conventions just sees the skill omit the roster section gracefully.
+
+**Deployment to user-level skills.** `cc-chain` lives in two places:
+
+- `Start_Here/skills/cc-chain/SKILL.md` — the canonical bundled copy in git, travels with the scaffold.
+- `~/.claude/skills/cc-chain/SKILL.md` — the user-level install location where Claude Code's harness auto-loads skills globally.
+
+BOOTSTRAP now has a **Step 0.5** that copies any skill in `Start_Here/skills/<name>/` to `~/.claude/skills/<name>/` only if the destination is absent. Idempotent — never overwrites a diverged user copy, and re-running BOOTSTRAP after first install does nothing.
+
+**Hard prohibitions preserved.** Despite the new prompt-drafting behavior, the workflow's non-negotiables are intact: the `Agent` tool is research-only (no Agent-tool spawning for edits), pushes never go directly to `main`, the previous CC commit is always verified before chaining, and the chain never auto-decides what to work on next unless `branch-explore` is passed.
+
+**Why this matters for cloners.** Anyone who clones Start_Here, runs `/pdr-grill`, and then `/run BOOTSTRAP.md` gets `cc-chain` deployed at user level the first time through. They can then drive async chains on the project BOOTSTRAP just scaffolded — including the project-aware prompt drafting, since BOOTSTRAP has already written agents to `.claude/agents/`. Users who already have their own `cc-chain` are unaffected; their version is preserved.
+
 # Claude_Code_start
