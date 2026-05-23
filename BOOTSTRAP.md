@@ -67,6 +67,25 @@ If any check fails, stop and surface ALL failures at once (don't fix-and-retry m
 
 ---
 
+## Step 0.5 — Deploy bundled skills to user level (idempotent)
+
+Start_Here ships a `skills/` directory with skills the operating model expects to be available to the user's Claude Code globally (not just inside this project). Currently:
+
+- `Start_Here/skills/pdr-grill/SKILL.md` — the entry-point grill (already required to have run, so it's normally already installed)
+- `Start_Here/skills/cc-chain/SKILL.md` — the async chain driver invoked once slice-based work begins
+
+For each skill in `Start_Here/skills/<name>/SKILL.md`:
+
+1. Check whether `~/.claude/skills/<name>/SKILL.md` already exists.
+2. If it does NOT exist: `mkdir -p ~/.claude/skills/<name>` then copy the bundled file into place. Surface a brief note (`deployed <name> to ~/.claude/skills/`).
+3. If it DOES exist: do nothing. Do NOT overwrite — the user's local version may have diverged with their own learnings. Surface a note (`<name> already installed at user level — left untouched`).
+
+This step is idempotent: re-running BOOTSTRAP on a repo where the user has already installed these skills will simply re-confirm they're present.
+
+Commit (only if any skills were deployed): `[bootstrap] deploy bundled skills to user level`
+
+---
+
 ## Step 1 — Compute derived variables
 
 Compute every variable in PDR_SCHEMA "Derived variables" section. Cache them in memory for the rest of BOOTSTRAP.
